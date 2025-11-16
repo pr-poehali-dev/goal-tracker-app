@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,23 +11,37 @@ import { toast } from 'sonner';
 type Period = 'day' | 'month' | 'year';
 
 interface Goal {
-  id: string;
+  id: number;
   title: string;
   period: Period;
   completed: boolean;
-  createdAt: Date;
+  created_at: string;
 }
 
+const API_URL = 'https://functions.poehali.dev/110cfe11-a556-4d7e-9e5d-7f6a8755b13a';
+
 const Index = () => {
-  const [goals, setGoals] = useState<Goal[]>([
-    { id: '1', title: 'Выпить 8 стаканов воды', period: 'day', completed: false, createdAt: new Date() },
-    { id: '2', title: 'Читать 30 минут каждый день', period: 'month', completed: false, createdAt: new Date() },
-    { id: '3', title: 'Пробежать марафон', period: 'year', completed: false, createdAt: new Date() },
-  ]);
-  
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [loading, setLoading] = useState(true);
   const [newGoalTitle, setNewGoalTitle] = useState('');
   const [newGoalPeriod, setNewGoalPeriod] = useState<Period>('day');
   const [showAddForm, setShowAddForm] = useState(false);
+
+  useEffect(() => {
+    loadGoals();
+  }, []);
+
+  const loadGoals = async () => {
+    try {
+      const response = await fetch(API_URL);
+      const data = await response.json();
+      setGoals(data);
+    } catch (error) {
+      toast.error('Ошибка загрузки целей');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const calculateProgress = (period: Period) => {
     const periodGoals = goals.filter(g => g.period === period);
@@ -36,44 +50,69 @@ const Index = () => {
     return Math.round((completed / periodGoals.length) * 100);
   };
 
-  const addGoal = () => {
+  const addGoal = async () => {
     if (!newGoalTitle.trim()) {
       toast.error('Введите название цели');
       return;
     }
     
-    const newGoal: Goal = {
-      id: Date.now().toString(),
-      title: newGoalTitle,
-      period: newGoalPeriod,
-      completed: false,
-      createdAt: new Date(),
-    };
+    try {
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: newGoalTitle,
+          period: newGoalPeriod,
+        }),
+      });
+      
+      const newGoal = await response.json();
+      setGoals([newGoal, ...goals]);
+      setNewGoalTitle('');
+      setShowAddForm(false);
+      toast.success('Цель добавлена! 🎯');
+    } catch (error) {
+      toast.error('Ошибка при добавлении цели');
+    }
+  };
+
+  const toggleGoal = async (goal: Goal) => {
+    const newCompleted = !goal.completed;
     
-    setGoals([...goals, newGoal]);
-    setNewGoalTitle('');
-    setShowAddForm(false);
-    toast.success('Цель добавлена! 🎯');
-  };
-
-  const toggleGoal = (id: string) => {
-    setGoals(goals.map(g => {
-      if (g.id === id) {
-        const newCompleted = !g.completed;
-        if (newCompleted) {
-          toast.success('Отлично! Продолжай в том же духе! 🎉', {
-            duration: 2000,
-          });
-        }
-        return { ...g, completed: newCompleted };
+    try {
+      const response = await fetch(API_URL, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: goal.id,
+          completed: newCompleted,
+        }),
+      });
+      
+      const updatedGoal = await response.json();
+      setGoals(goals.map(g => g.id === goal.id ? updatedGoal : g));
+      
+      if (newCompleted) {
+        toast.success('Отлично! Продолжай в том же духе! 🎉', {
+          duration: 2000,
+        });
       }
-      return g;
-    }));
+    } catch (error) {
+      toast.error('Ошибка при обновлении цели');
+    }
   };
 
-  const deleteGoal = (id: string) => {
-    setGoals(goals.filter(g => g.id !== id));
-    toast.info('Цель удалена');
+  const deleteGoal = async (id: number) => {
+    try {
+      await fetch(`${API_URL}?id=${id}`, {
+        method: 'DELETE',
+      });
+      
+      setGoals(goals.filter(g => g.id !== id));
+      toast.info('Цель удалена');
+    } catch (error) {
+      toast.error('Ошибка при удалении цели');
+    }
   };
 
   const getPeriodLabel = (period: Period) => {
@@ -89,6 +128,17 @@ const Index = () => {
   const dayProgress = calculateProgress('day');
   const monthProgress = calculateProgress('month');
   const yearProgress = calculateProgress('year');
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-orange-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-6xl mb-4 animate-pulse">🎯</div>
+          <p className="text-xl text-muted-foreground">Загрузка целей...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-orange-50">
@@ -210,7 +260,7 @@ const Index = () => {
               <div className="flex items-start gap-4">
                 <Checkbox
                   checked={goal.completed}
-                  onCheckedChange={() => toggleGoal(goal.id)}
+                  onCheckedChange={() => toggleGoal(goal)}
                   className="mt-1 h-6 w-6 data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-purple-600 data-[state=checked]:to-pink-600"
                 />
                 <div className="flex-1">
