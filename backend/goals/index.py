@@ -34,7 +34,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         if method == 'GET':
             cursor.execute('''
-                SELECT id, title, period, completed, 
+                SELECT id, title, period, completed, period_type,
+                       to_char(start_date, 'YYYY-MM-DD') as start_date,
+                       to_char(end_date, 'YYYY-MM-DD') as end_date,
                        to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as created_at
                 FROM t_p18332806_goal_tracker_app.goals
                 ORDER BY created_at DESC
@@ -54,13 +56,19 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             body_data = json.loads(event.get('body', '{}'))
             title = body_data.get('title')
             period = body_data.get('period', 'day')
+            period_type = body_data.get('period_type', 'preset')
+            start_date = body_data.get('start_date')
+            end_date = body_data.get('end_date')
             
             cursor.execute('''
-                INSERT INTO t_p18332806_goal_tracker_app.goals (title, period)
-                VALUES (%s, %s)
-                RETURNING id, title, period, completed, 
+                INSERT INTO t_p18332806_goal_tracker_app.goals 
+                (title, period, period_type, start_date, end_date)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING id, title, period, completed, period_type,
+                          to_char(start_date, 'YYYY-MM-DD') as start_date,
+                          to_char(end_date, 'YYYY-MM-DD') as end_date,
                           to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as created_at
-            ''', (title, period))
+            ''', (title, period, period_type, start_date, end_date))
             
             new_goal = cursor.fetchone()
             conn.commit()
@@ -83,7 +91,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 UPDATE t_p18332806_goal_tracker_app.goals
                 SET completed = %s
                 WHERE id = %s
-                RETURNING id, title, period, completed,
+                RETURNING id, title, period, completed, period_type,
+                          to_char(start_date, 'YYYY-MM-DD') as start_date,
+                          to_char(end_date, 'YYYY-MM-DD') as end_date,
                           to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as created_at
             ''', (completed, goal_id))
             

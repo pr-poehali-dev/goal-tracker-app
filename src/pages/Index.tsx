@@ -5,15 +5,23 @@ import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import Icon from '@/components/ui/icon';
 import { toast } from 'sonner';
+import { format } from 'date-fns';
+import { ru } from 'date-fns/locale';
 
-type Period = 'day' | 'month' | 'year';
+type Period = 'day' | 'month' | 'year' | 'custom';
+type PeriodType = 'preset' | 'custom';
 
 interface Goal {
   id: number;
   title: string;
   period: Period;
+  period_type: PeriodType;
+  start_date?: string;
+  end_date?: string;
   completed: boolean;
   created_at: string;
 }
@@ -25,6 +33,8 @@ const Index = () => {
   const [loading, setLoading] = useState(true);
   const [newGoalTitle, setNewGoalTitle] = useState('');
   const [newGoalPeriod, setNewGoalPeriod] = useState<Period>('day');
+  const [startDate, setStartDate] = useState<Date>();
+  const [endDate, setEndDate] = useState<Date>();
   const [showAddForm, setShowAddForm] = useState(false);
 
   useEffect(() => {
@@ -44,7 +54,7 @@ const Index = () => {
   };
 
   const calculateProgress = (period: Period) => {
-    const periodGoals = goals.filter(g => g.period === period);
+    const periodGoals = goals.filter(g => g.period === period && g.period_type === 'preset');
     if (periodGoals.length === 0) return 0;
     const completed = periodGoals.filter(g => g.completed).length;
     return Math.round((completed / periodGoals.length) * 100);
@@ -55,20 +65,36 @@ const Index = () => {
       toast.error('Введите название цели');
       return;
     }
+
+    if (newGoalPeriod === 'custom' && (!startDate || !endDate)) {
+      toast.error('Выберите даты начала и окончания');
+      return;
+    }
     
     try {
+      const payload: any = {
+        title: newGoalTitle,
+        period: newGoalPeriod,
+        period_type: newGoalPeriod === 'custom' ? 'custom' : 'preset',
+      };
+
+      if (newGoalPeriod === 'custom' && startDate && endDate) {
+        payload.start_date = format(startDate, 'yyyy-MM-dd');
+        payload.end_date = format(endDate, 'yyyy-MM-dd');
+      }
+
       const response = await fetch(API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: newGoalTitle,
-          period: newGoalPeriod,
-        }),
+        body: JSON.stringify(payload),
       });
       
       const newGoal = await response.json();
       setGoals([newGoal, ...goals]);
       setNewGoalTitle('');
+      setNewGoalPeriod('day');
+      setStartDate(undefined);
+      setEndDate(undefined);
       setShowAddForm(false);
       toast.success('Цель добавлена! 🎯');
     } catch (error) {
@@ -115,19 +141,26 @@ const Index = () => {
     }
   };
 
-  const getPeriodLabel = (period: Period) => {
-    const labels = { day: 'День', month: 'Месяц', year: 'Год' };
-    return labels[period];
+  const getPeriodLabel = (goal: Goal) => {
+    if (goal.period_type === 'custom' && goal.start_date && goal.end_date) {
+      const start = format(new Date(goal.start_date), 'd MMM', { locale: ru });
+      const end = format(new Date(goal.end_date), 'd MMM yyyy', { locale: ru });
+      return `${start} - ${end}`;
+    }
+    const labels: Record<Period, string> = { day: 'День', month: 'Месяц', year: 'Год', custom: 'Свой период' };
+    return labels[goal.period];
   };
 
   const getPeriodEmoji = (period: Period) => {
-    const emojis = { day: '☀️', month: '📅', year: '🎯' };
+    const emojis: Record<Period, string> = { day: '☀️', month: '📅', year: '🎯', custom: '📆' };
     return emojis[period];
   };
 
   const dayProgress = calculateProgress('day');
   const monthProgress = calculateProgress('month');
   const yearProgress = calculateProgress('year');
+
+  const customGoals = goals.filter(g => g.period_type === 'custom');
 
   if (loading) {
     return (
@@ -161,7 +194,7 @@ const Index = () => {
             </div>
             <Progress value={dayProgress} className="h-3 bg-white/20" />
             <p className="text-white/90 text-sm mt-3">
-              {goals.filter(g => g.period === 'day' && g.completed).length} из {goals.filter(g => g.period === 'day').length} целей
+              {goals.filter(g => g.period === 'day' && g.period_type === 'preset' && g.completed).length} из {goals.filter(g => g.period === 'day' && g.period_type === 'preset').length} целей
             </p>
           </Card>
 
@@ -175,7 +208,7 @@ const Index = () => {
             </div>
             <Progress value={monthProgress} className="h-3 bg-white/20" />
             <p className="text-white/90 text-sm mt-3">
-              {goals.filter(g => g.period === 'month' && g.completed).length} из {goals.filter(g => g.period === 'month').length} целей
+              {goals.filter(g => g.period === 'month' && g.period_type === 'preset' && g.completed).length} из {goals.filter(g => g.period === 'month' && g.period_type === 'preset').length} целей
             </p>
           </Card>
 
@@ -189,10 +222,54 @@ const Index = () => {
             </div>
             <Progress value={yearProgress} className="h-3 bg-white/20" />
             <p className="text-white/90 text-sm mt-3">
-              {goals.filter(g => g.period === 'year' && g.completed).length} из {goals.filter(g => g.period === 'year').length} целей
+              {goals.filter(g => g.period === 'year' && g.period_type === 'preset' && g.completed).length} из {goals.filter(g => g.period === 'year' && g.period_type === 'preset').length} целей
             </p>
           </Card>
         </div>
+
+        {customGoals.length > 0 && (
+          <div className="mb-10">
+            <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent mb-4">
+              Мои периоды 📆
+            </h2>
+            <div className="grid md:grid-cols-3 gap-4">
+              {customGoals.map((goal) => {
+                const customPeriodGoals = customGoals.filter(g => 
+                  g.start_date === goal.start_date && g.end_date === goal.end_date
+                );
+                const completed = customPeriodGoals.filter(g => g.completed).length;
+                const progress = Math.round((completed / customPeriodGoals.length) * 100);
+                
+                return (
+                  <Card 
+                    key={`period-${goal.start_date}-${goal.end_date}`}
+                    className="p-4 bg-gradient-to-br from-indigo-500 to-indigo-600 text-white border-0 hover:shadow-lg transition-all"
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-3xl">📆</span>
+                      <div className="text-right">
+                        <p className="text-2xl font-bold">{progress}%</p>
+                      </div>
+                    </div>
+                    <Progress value={progress} className="h-2 bg-white/20 mb-2" />
+                    <p className="text-white/90 text-xs">
+                      {goal.start_date && goal.end_date && (
+                        <>
+                          {format(new Date(goal.start_date), 'd MMM', { locale: ru })} - {format(new Date(goal.end_date), 'd MMM', { locale: ru })}
+                        </>
+                      )}
+                    </p>
+                    <p className="text-white/80 text-xs mt-1">
+                      {completed} из {customPeriodGoals.length} целей
+                    </p>
+                  </Card>
+                );
+              }).filter((card, index, self) => 
+                index === self.findIndex(c => c.key === card.key)
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
@@ -231,15 +308,67 @@ const Index = () => {
                     <SelectItem value="day">☀️ Дневная цель</SelectItem>
                     <SelectItem value="month">📅 Месячная цель</SelectItem>
                     <SelectItem value="year">🎯 Годовая цель</SelectItem>
+                    <SelectItem value="custom">📆 Свой период</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+
+              {newGoalPeriod === 'custom' && (
+                <div className="grid md:grid-cols-2 gap-4 p-4 bg-purple-50 rounded-lg border-2 border-purple-200">
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Дата начала</label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" className="w-full justify-start text-left font-normal">
+                          <Icon name="Calendar" className="mr-2" size={16} />
+                          {startDate ? format(startDate, 'd MMMM yyyy', { locale: ru }) : 'Выберите дату'}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={startDate}
+                          onSelect={setStartDate}
+                          locale={ru}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Дата окончания</label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" className="w-full justify-start text-left font-normal">
+                          <Icon name="Calendar" className="mr-2" size={16} />
+                          {endDate ? format(endDate, 'd MMMM yyyy', { locale: ru }) : 'Выберите дату'}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={endDate}
+                          onSelect={setEndDate}
+                          locale={ru}
+                          disabled={(date) => startDate ? date < startDate : false}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                </div>
+              )}
+
               <div className="flex gap-3">
                 <Button onClick={addGoal} className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600">
                   <Icon name="Check" className="mr-2" size={18} />
                   Создать
                 </Button>
-                <Button onClick={() => setShowAddForm(false)} variant="outline" className="flex-1">
+                <Button onClick={() => {
+                  setShowAddForm(false);
+                  setStartDate(undefined);
+                  setEndDate(undefined);
+                }} variant="outline" className="flex-1">
                   Отмена
                 </Button>
               </div>
@@ -253,7 +382,9 @@ const Index = () => {
               key={goal.id} 
               className="p-5 hover:shadow-lg transition-all duration-300 hover:scale-[1.02] border-l-4 animate-in fade-in slide-in-from-left"
               style={{
-                borderLeftColor: goal.period === 'day' ? '#9b87f5' : goal.period === 'month' ? '#D946EF' : '#F97316',
+                borderLeftColor: goal.period === 'day' ? '#9b87f5' : 
+                                 goal.period === 'month' ? '#D946EF' : 
+                                 goal.period === 'year' ? '#F97316' : '#6366f1',
                 animationDelay: `${index * 50}ms`
               }}
             >
@@ -272,7 +403,7 @@ const Index = () => {
                       <div className="flex items-center gap-2 mt-1">
                         <span className="text-2xl">{getPeriodEmoji(goal.period)}</span>
                         <span className="text-sm text-muted-foreground font-medium">
-                          {getPeriodLabel(goal.period)}
+                          {getPeriodLabel(goal)}
                         </span>
                       </div>
                     </div>
@@ -303,7 +434,7 @@ const Index = () => {
           <div className="inline-flex items-center gap-2 px-6 py-3 bg-white rounded-full shadow-md">
             <Icon name="TrendingUp" className="text-purple-600" size={20} />
             <p className="text-sm font-medium text-muted-foreground">
-              Общий прогресс: <span className="font-bold text-purple-600">{Math.round((dayProgress + monthProgress + yearProgress) / 3)}%</span>
+              Общий прогресс: <span className="font-bold text-purple-600">{goals.length > 0 ? Math.round((goals.filter(g => g.completed).length / goals.length) * 100) : 0}%</span>
             </p>
           </div>
         </footer>
